@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter --version)",
+      "PowerShell(flutter --version)",
+      "Read(//c/Development/flutter/bin/**)",
+      "PowerShell($env:PATH = \"C:\\\\Development\\\\flutter\\\\bin;\" + $env:PATH; flutter --version)",
+      "Bash(grep -rl \"\\\\.flutter-plugins'\" \"/c/Development/flutter/packages/flutter_tools/lib\" 2>/dev/null | head -5)",
+      "Read(//c/Development/flutter/packages/flutter_tools/lib/**)"
+    ]
+  }
+}

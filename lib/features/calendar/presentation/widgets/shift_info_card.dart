@@ -10,6 +10,12 @@
 // rather than a flat neutral tone. The card surface itself stays the
 // app's default (unthemed) card color; only the icon is tinted, keeping
 // this "clean and scalable" rather than a fully colored card.
+//
+// PHASE 2.5: the time range and hours rows are now only shown when
+// present. Shifts created through the Shift Picker (Off/Leave/Public
+// Holiday, currently) have no meaningful time range — showing them
+// unconditionally would mean rendering "null – null", which is worse than
+// simply omitting the row.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
@@ -64,26 +70,30 @@ class ShiftInfoCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              '${details.startTime} – ${details.endTime}',
-              style: textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+            if (details.startTime != null && details.endTime != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                '${details.startTime} – ${details.endTime}',
+                style: textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Hours',
-              style: textTheme.labelMedium?.copyWith(
-                color: colorScheme.onSurfaceVariant,
+            ],
+            if (details.hours != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Hours',
+                style: textTheme.labelMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            Text(
-              '${details.hours} hrs',
-              style: textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
+              Text(
+                '${details.hours} hrs',
+                style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

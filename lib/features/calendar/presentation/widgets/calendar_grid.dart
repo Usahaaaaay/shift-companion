@@ -14,10 +14,9 @@
 // handling. See calendar_day_cell.dart for the per-cell rendering.
 //
 // PHASE 2.2: this grid still owns no shift data itself — [shifts] is
-// supplied by [CalendarScreen] (currently from DummyShifts) and only
-// looked up here per cell, matching the same "widgets render state, they
-// don't fetch it" separation dashboard_mock_data.dart already established
-// for the Dashboard.
+// supplied by [CalendarScreen] and only looked up here per cell, matching
+// the same "widgets render state, they don't fetch it" separation
+// dashboard_mock_data.dart already established for the Dashboard.
 //
 // PHASE 2.3: this grid still owns no selection state either — [selectedDate]
 // flows down from CalendarScreen the same way [shifts] does, and taps flow
@@ -27,10 +26,16 @@
 // in this phase — selecting a day outside the visible month without also
 // switching the displayed month would be a confusing, half-built
 // interaction, and switching months isn't in this phase's scope.
+//
+// PHASE 2.5: [shifts] is now keyed by the fuller `ShiftDetails` (matching
+// CalendarScreen's single in-memory shift map, shared with the bottom
+// sheet) rather than a bare `ShiftType`. This grid only ever needs the
+// type — for the dot color — so it just reads `.type` off whatever it
+// finds; it still has no awareness of the rest of a shift's details.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
-import '../../domain/entities/shift_type.dart';
+import '../../domain/entities/shift_details.dart';
 import 'calendar_day_cell.dart';
 
 /// The Calendar's monthly grid of [CalendarDayCell]s.
@@ -54,10 +59,10 @@ class CalendarGrid extends StatelessWidget {
   final DateTime today;
 
   /// Shift assignments for the displayed month, keyed by a normalized
-  /// (year/month/day-only) date — see `DummyShifts.normalize`. Defaults to
-  /// empty so this grid still works exactly as it did in Phase 2.1 for any
-  /// caller that doesn't pass shifts.
-  final Map<DateTime, ShiftType> shifts;
+  /// (year/month/day-only) date. Defaults to empty so this grid still
+  /// works exactly as it did in Phase 2.1 for any caller that doesn't pass
+  /// shifts.
+  final Map<DateTime, ShiftDetails> shifts;
 
   /// The single currently-selected date, or `null` if nothing is selected
   /// yet. Compared against each current-month cell's date to decide which
@@ -137,9 +142,9 @@ class CalendarGrid extends StatelessWidget {
         isToday: isToday,
         isSelected: isSelected,
         // Leading (previous-month) cells intentionally never get a shift
-        // dot — they're already visually de-emphasized, and dummy_shifts
-        // only ever provides data for the displayed month.
-        shiftType: shifts[date],
+        // dot — they're already visually de-emphasized, and [shifts] only
+        // ever contains entries for the displayed month.
+        shiftType: shifts[date]?.type,
         onTap: onDaySelected == null ? null : () => onDaySelected!(date),
       );
     });

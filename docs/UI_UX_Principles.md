@@ -8,7 +8,10 @@ personal taste in the moment.*
 *Related documents: [VISION.md](VISION.md) (Sections 8–9, Product & Design Principles —
 this document expands on those), [Software_Requirements.md](Software_Requirements.md)
 (Section 10, Accessibility Requirements — this document's Section 15 implements those
-requirements visually).*
+requirements visually), [UX_Design_Plan.md](UX_Design_Plan.md) (where these principles
+get applied screen-by-screen — navigation, information architecture, and the Calendar's
+interaction model), [Design_System.md](Design_System.md) (where these principles become
+concrete tokens and component specs — colors, spacing, typography, motion).*
 
 ---
 

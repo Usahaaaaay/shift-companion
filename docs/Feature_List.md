@@ -8,7 +8,9 @@ entries already in place.*
 
 *Related documents: [VISION.md](VISION.md) (why these features matter),
 [Software_Requirements.md](Software_Requirements.md) (what each feature must do, module
-by module), [UI_UX_Principles.md](UI_UX_Principles.md) (how every feature should feel).*
+by module), [UI_UX_Principles.md](UI_UX_Principles.md) (how every feature should feel),
+[UX_Design_Plan.md](UX_Design_Plan.md) (navigation architecture, screen-by-screen design,
+and the phased build order these priority/version columns map onto).*
 
 ---
 

@@ -28,9 +28,15 @@
 // The no-shift view's "Add Shift" button and the new has-shift view's
 // "Edit Shift" button both open the same ShiftFormBottomSheet — see that
 // file for why there's only one form widget for both cases.
+//
+// PHASE 3.4: added [getTemplates], threaded straight through to
+// ShiftFormBottomSheet — this sheet has no use for the template list
+// itself, it just passes the callback along, same as it already does for
+// [getShift]/[onSaveShift]/[onDeleteShift].
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../domain/entities/shift_details.dart';
+import '../../domain/entities/shift_template.dart';
 import 'date_header.dart';
 import 'notes_section.dart';
 import 'shift_form_bottom_sheet.dart';
@@ -54,6 +60,7 @@ Future<void> showCalendarBottomSheet(
   required Future<ShiftDetails?> Function(DateTime date) getShift,
   required Future<void> Function(DateTime date, ShiftDetails shift) onSaveShift,
   required Future<void> Function(DateTime date) onDeleteShift,
+  required Future<List<ShiftTemplate>> Function() getTemplates,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -76,6 +83,7 @@ Future<void> showCalendarBottomSheet(
       getShift: getShift,
       onSaveShift: onSaveShift,
       onDeleteShift: onDeleteShift,
+      getTemplates: getTemplates,
     ),
   );
 }
@@ -91,6 +99,7 @@ class CalendarBottomSheet extends StatefulWidget {
     required this.getShift,
     required this.onSaveShift,
     required this.onDeleteShift,
+    required this.getTemplates,
   });
 
   /// The selected date this sheet describes.
@@ -110,6 +119,11 @@ class CalendarBottomSheet extends StatefulWidget {
   /// Removes the shift for [selectedDate] through CalendarScreen's
   /// repository.
   final Future<void> Function(DateTime date) onDeleteShift;
+
+  /// Reads the user's Shift Templates for the create/edit form's Template
+  /// selector. Passed straight through to ShiftFormBottomSheet — this
+  /// sheet never reads the template list itself.
+  final Future<List<ShiftTemplate>> Function() getTemplates;
 
   @override
   State<CalendarBottomSheet> createState() => _CalendarBottomSheetState();
@@ -153,6 +167,7 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
         await widget.onDeleteShift(date);
         _refresh();
       },
+      getTemplates: widget.getTemplates,
     );
   }
 

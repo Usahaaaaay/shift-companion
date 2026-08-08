@@ -11,10 +11,18 @@
 // ShiftType, ShiftDetails, or a plain Map of them, matching
 // ShiftRepository's contract exactly. The private _toDomain/_toCompanion
 // helpers are the only place Drift's generated types are touched.
+//
+// PHASE 3.4: added the four Shift Template methods ShiftRepository now
+// declares, plus [breakMinutes] on the existing Shift conversions. Same
+// rule applies to the new methods: no Drift type crosses this class's
+// public API, only ShiftTemplate/int/List of them — _toDomainTemplate/
+// _toCompanionTemplate are the template equivalent of _toDomain/
+// _toCompanion below.
 
 import 'package:drift/drift.dart';
 import '../../../../database/app_database.dart';
 import '../../domain/entities/shift_details.dart';
+import '../../domain/entities/shift_template.dart';
 import '../../domain/repositories/shift_repository.dart';
 
 /// A [ShiftRepository] backed by Drift/SQLite via [AppDatabase].
@@ -79,6 +87,31 @@ class DriftShiftRepository implements ShiftRepository {
     )..where((t) => t.date.equals(_normalizeDate(date)))).go();
   }
 
+  @override
+  Future<List<ShiftTemplate>> getTemplates() async {
+    final rows = await _db.select(_db.shiftTemplates).get();
+    return rows.map(_toDomainTemplate).toList();
+  }
+
+  @override
+  Future<void> saveTemplate(ShiftTemplate template) async {
+    await _db.into(_db.shiftTemplates).insert(_toCompanionTemplate(template));
+  }
+
+  @override
+  Future<void> updateTemplate(ShiftTemplate template) async {
+    // template.id is required to target the existing row — see
+    // ShiftRepository.updateTemplate's own doc comment.
+    await (_db.update(_db.shiftTemplates)
+          ..where((t) => t.id.equals(template.id!)))
+        .write(_toCompanionTemplate(template));
+  }
+
+  @override
+  Future<void> deleteTemplate(int id) async {
+    await (_db.delete(_db.shiftTemplates)..where((t) => t.id.equals(id))).go();
+  }
+
   /// Converts a stored row into the domain [ShiftDetails] the rest of the
   /// app works with. `notes` has no column yet (see shift_table.dart's
   /// scope note), so it's always `null` here for now.
@@ -88,6 +121,7 @@ class DriftShiftRepository implements ShiftRepository {
       startTime: row.startTime,
       endTime: row.endTime,
       hours: row.hours,
+      breakMinutes: row.breakMinutes,
     );
   }
 
@@ -103,6 +137,35 @@ class DriftShiftRepository implements ShiftRepository {
       startTime: Value(details.startTime),
       endTime: Value(details.endTime),
       hours: Value(details.hours),
+      breakMinutes: Value(details.breakMinutes),
+    );
+  }
+
+  /// Converts a stored row into the domain [ShiftTemplate] the rest of the
+  /// app works with.
+  static ShiftTemplate _toDomainTemplate(ShiftTemplateRow row) {
+    return ShiftTemplate(
+      id: row.id,
+      name: row.name,
+      startMinutes: row.startMinutes,
+      endMinutes: row.endMinutes,
+      breakMinutes: row.breakMinutes,
+      notes: row.defaultNotes,
+    );
+  }
+
+  /// Converts a domain [ShiftTemplate] into the row shape Drift's generated
+  /// insert/update API expects. [template.id] is deliberately not carried
+  /// across here — [saveTemplate] never needs it (a new id is always
+  /// assigned), and [updateTemplate] targets it separately via its own
+  /// `where` clause rather than as part of the written row.
+  static ShiftTemplatesCompanion _toCompanionTemplate(ShiftTemplate template) {
+    return ShiftTemplatesCompanion.insert(
+      name: template.name,
+      startMinutes: template.startMinutes,
+      endMinutes: template.endMinutes,
+      breakMinutes: template.breakMinutes,
+      defaultNotes: Value(template.notes),
     );
   }
 }

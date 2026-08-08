@@ -21,11 +21,42 @@
 // specifically for "genuinely destructive, hard-to-reverse confirmations"
 // — exactly the delete-confirmation step below, the one place in this
 // widget a Dialog actually belongs.
+//
+// PHASE 3.4: added a Template selector (see [_applyTemplate]) and a Break
+// field. Picking a template only fills this form's Start time, Finish
+// time, Break, and Notes controllers — it's a one-shot convenience action,
+// not a bound value; nothing is saved until the user still taps Save, same
+// as every other field here. [getTemplates] is a callback (matching the
+// shape [onSave]/[onDelete] already have) rather than a pre-fetched list,
+// so this widget — not its caller — owns exactly when its own data loads,
+// consistent with how CalendarBottomSheet already loads its own
+// ShiftDetails via a held Future + FutureBuilder.
+//
+// PHASE 3.5: Start/Finish became structured (minutes since midnight,
+// picked via ShiftTimeField) instead of free text, and Hours is no longer
+// typed — it's calculated live from Start/Finish/Break via
+// WorkTimeCalculator and shown read-only. See
+// decisions/0004-automatic-hours-calculation.md for why the old free-text
+// time fields had to change to make that possible, and why this still
+// required no repository or database change (ShiftDetails.startTime/
+// endTime/hours keep their existing types; only how this form builds and
+// seeds them changed). [_applyTemplate] got simpler as a result — a
+// template's minutes now assign directly to [_startMinutes]/[_endMinutes],
+// no string round-trip needed.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
+import '../../../../core/utils/app_date_format.dart';
+import '../../../../core/utils/work_time_calculator.dart';
 import '../../domain/entities/shift_details.dart';
+import '../../domain/entities/shift_template.dart';
 import '../../domain/entities/shift_type.dart';
+import 'calculated_hours_field.dart';
+import 'delete_shift_dialog.dart';
+import 'shift_break_field.dart';
+import 'shift_template_dropdown.dart';
+import 'shift_time_field.dart';
+import 'shift_type_dropdown.dart';
 
 /// Opens the create/edit shift form for [date].
 ///
@@ -40,6 +71,7 @@ Future<void> showShiftFormBottomSheet(
   ShiftDetails? initialShift,
   required Future<void> Function(DateTime date, ShiftDetails shift) onSave,
   required Future<void> Function(DateTime date) onDelete,
+  required Future<List<ShiftTemplate>> Function() getTemplates,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -56,6 +88,7 @@ Future<void> showShiftFormBottomSheet(
       initialShift: initialShift,
       onSave: onSave,
       onDelete: onDelete,
+      getTemplates: getTemplates,
     ),
   );
 }
@@ -69,6 +102,7 @@ class ShiftFormBottomSheet extends StatefulWidget {
     this.initialShift,
     required this.onSave,
     required this.onDelete,
+    required this.getTemplates,
   });
 
   /// The date this shift belongs to.
@@ -85,6 +119,9 @@ class ShiftFormBottomSheet extends StatefulWidget {
   /// Called when the user confirms deletion (edit mode only).
   final Future<void> Function(DateTime date) onDelete;
 
+  /// Reads the user's Shift Templates for the Template selector.
+  final Future<List<ShiftTemplate>> Function() getTemplates;
+
   /// Whether this form is editing an existing shift rather than creating
   /// a new one.
   bool get isEditing => initialShift != null;
@@ -95,10 +132,29 @@ class ShiftFormBottomSheet extends StatefulWidget {
 
 class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
   late ShiftType _type;
-  late final TextEditingController _startTimeController;
-  late final TextEditingController _endTimeController;
-  late final TextEditingController _hoursController;
+
+  /// The shift's start time, in minutes since midnight — `null` until the
+  /// user (or a template) picks one. Structured rather than free text so
+  /// [_hoursDisplay] can feed it straight into WorkTimeCalculator; see this
+  /// file's own Phase 3.5 header note.
+  int? _startMinutes;
+
+  /// The shift's finish time, in minutes since midnight — see
+  /// [_startMinutes] for why this isn't free text.
+  int? _endMinutes;
+  late final TextEditingController _breakController;
   late final TextEditingController _notesController;
+
+  /// The template last picked from the selector this session, or `null`
+  /// until the user chooses one — see ShiftTemplateDropdown's own doc
+  /// comment on why this isn't a value the form itself computes.
+  ShiftTemplate? _selectedTemplate;
+
+  /// Loaded once in [initState], not re-fetched afterward — this form
+  /// never mutates the template list itself, so there's nothing for a
+  /// refetch to pick up. Matches the same "load once via a held Future"
+  /// shape CalendarBottomSheet uses for its own async data.
+  late final Future<List<ShiftTemplate>> _templatesFuture;
 
   @override
   void initState() {
@@ -110,21 +166,87 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
     final seed =
         widget.initialShift ?? ShiftDetails.placeholderFor(ShiftType.morning);
     _type = seed.type;
-    _startTimeController = TextEditingController(text: seed.startTime ?? '');
-    _endTimeController = TextEditingController(text: seed.endTime ?? '');
-    _hoursController = TextEditingController(
-      text: seed.hours?.toString() ?? '',
+    // Parses the saved formatted string back into minutes — the one place
+    // in this form that still parses a time string, and only to seed the
+    // picker from history; see AppDateFormat.minutesFromTimeOfDay's own doc
+    // comment on why a `null` result (an unparseable legacy value) is
+    // handled gracefully rather than assumed impossible.
+    _startMinutes = seed.startTime == null
+        ? null
+        : AppDateFormat.minutesFromTimeOfDay(seed.startTime!);
+    _endMinutes = seed.endTime == null
+        ? null
+        : AppDateFormat.minutesFromTimeOfDay(seed.endTime!);
+    _breakController = TextEditingController(
+      text: seed.breakMinutes?.toString() ?? '',
     );
     _notesController = TextEditingController(text: seed.notes ?? '');
+    _templatesFuture = widget.getTemplates();
   }
 
   @override
   void dispose() {
-    _startTimeController.dispose();
-    _endTimeController.dispose();
-    _hoursController.dispose();
+    _breakController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+
+  /// This form's current break value, or `null` if the field is blank or
+  /// unparseable — the same tolerant-parsing convention [_handleSave]
+  /// already used before this phase.
+  int? get _breakMinutes => int.tryParse(_breakController.text.trim());
+
+  /// Whether the current break exceeds the raw Start-to-Finish span —
+  /// shown as an inline error on the Break field. `false` whenever Start
+  /// or Finish hasn't been picked yet, since there's nothing to compare
+  /// against.
+  bool get _breakTooLong {
+    final start = _startMinutes;
+    final end = _endMinutes;
+    final breakMinutes = _breakMinutes;
+    if (start == null || end == null || breakMinutes == null) return false;
+    return WorkTimeCalculator.isBreakTooLong(
+      startMinutes: start,
+      endMinutes: end,
+      breakMinutes: breakMinutes,
+    );
+  }
+
+  /// The live-calculated Hours value shown in the read-only display below
+  /// — recomputed on every build from whatever Start/Finish/Break
+  /// currently hold, per this phase's "no Save button required to trigger
+  /// recalculation" requirement. `null` until both Start and Finish are
+  /// picked — there's nothing to calculate yet, and showing "0.0 h" in
+  /// that case would misleadingly look like a real answer.
+  double? get _calculatedHours {
+    final start = _startMinutes;
+    final end = _endMinutes;
+    if (start == null || end == null) return null;
+    return WorkTimeCalculator.calculateWorkedHours(
+      startMinutes: start,
+      endMinutes: end,
+      breakMinutes: _breakMinutes ?? 0,
+    );
+  }
+
+  /// Copies [template]'s values into this form's Start time, Finish time,
+  /// Break, and Notes fields — the exact four fields this phase's brief
+  /// specifies a template fills. Deliberately does not touch [_type]: it
+  /// isn't part of what a template describes. Hours is no longer a field
+  /// to fill at all as of Phase 3.5 — it's calculated live from whatever
+  /// Start/Finish/Break end up being, template-supplied or not.
+  ///
+  /// This only updates local form state — nothing is persisted here. The
+  /// underlying shift (if editing one) isn't touched until Save is
+  /// pressed, same as every other field in this form.
+  void _applyTemplate(ShiftTemplate template) {
+    setState(() {
+      _selectedTemplate = template;
+      _startMinutes = template.startMinutes;
+      _endMinutes = template.endMinutes;
+      _breakController.text = template.breakMinutes.toString();
+      _notesController.text = template.notes ?? '';
+    });
   }
 
   /// A blank field becomes `null` — matching [ShiftDetails]' own "not
@@ -134,11 +256,23 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
       value.trim().isEmpty ? null : value.trim();
 
   Future<void> _handleSave() async {
+    final start = _startMinutes;
+    final end = _endMinutes;
     final shift = ShiftDetails(
       type: _type,
-      startTime: _blankToNull(_startTimeController.text),
-      endTime: _blankToNull(_endTimeController.text),
-      hours: double.tryParse(_hoursController.text.trim()),
+      // Converted back to the formatted-string shape ShiftDetails has
+      // always used — no schema change; only this form's own internal
+      // representation of "in progress" Start/Finish values changed.
+      startTime: start == null
+          ? null
+          : AppDateFormat.timeOfDayFromMinutes(start),
+      endTime: end == null ? null : AppDateFormat.timeOfDayFromMinutes(end),
+      // Calculated, not read from a text field the user typed into — this
+      // phase's whole point. `_calculatedHours` is `null` exactly when
+      // Start or Finish is unset, matching how Off/Leave/Public Holiday
+      // shifts have always had no hours value at all.
+      hours: _calculatedHours,
+      breakMinutes: _breakMinutes,
       notes: _blankToNull(_notesController.text),
     );
     await widget.onSave(widget.date, shift);
@@ -146,33 +280,7 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
   }
 
   Future<void> _handleDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        final colorScheme = Theme.of(dialogContext).colorScheme;
-        return AlertDialog(
-          title: const Text('Delete this shift?'),
-          content: const Text("This can't be undone."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            // Styled distinctly from routine actions per
-            // docs/UI_UX_Principles.md Section 9 ("destructive actions
-            // look different").
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: colorScheme.error,
-                foregroundColor: colorScheme.onError,
-              ),
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
+    final confirmed = await showDeleteShiftDialog(context);
     if (confirmed != true) return;
     await widget.onDelete(widget.date);
     if (mounted) Navigator.pop(context);
@@ -203,41 +311,55 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
-            DropdownButtonFormField<ShiftType>(
-              initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Shift type'),
-              items: [
-                for (final type in ShiftType.values)
-                  DropdownMenuItem(value: type, child: Text(_typeLabel(type))),
-              ],
-              onChanged: (value) {
-                if (value != null) setState(() => _type = value);
+            // The Template selector loads independently of the rest of
+            // this form (see [_templatesFuture]) — a brief loading gap
+            // here shouldn't block typing into any other field, so only
+            // this one small piece is wrapped in a FutureBuilder rather
+            // than the whole form.
+            FutureBuilder<List<ShiftTemplate>>(
+              future: _templatesFuture,
+              builder: (context, snapshot) {
+                final templates = snapshot.data ?? const [];
+                if (templates.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.md),
+                  child: ShiftTemplateDropdown(
+                    templates: templates,
+                    selected: _selectedTemplate,
+                    onSelected: _applyTemplate,
+                  ),
+                );
               },
             ),
-            const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _startTimeController,
-              decoration: const InputDecoration(
-                labelText: 'Start time',
-                hintText: 'e.g. 7:00 AM',
-              ),
+            ShiftTypeDropdown(
+              selected: _type,
+              onSelected: (value) => setState(() => _type = value),
             ),
             const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _endTimeController,
-              decoration: const InputDecoration(
-                labelText: 'Finish time',
-                hintText: 'e.g. 4:30 PM',
-              ),
+            ShiftTimeField(
+              label: 'Start time',
+              minutes: _startMinutes,
+              onChanged: (value) => setState(() => _startMinutes = value),
             ),
             const SizedBox(height: AppSpacing.md),
-            TextField(
-              controller: _hoursController,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(labelText: 'Hours'),
+            ShiftTimeField(
+              label: 'Finish time',
+              minutes: _endMinutes,
+              onChanged: (value) => setState(() => _endMinutes = value),
             ),
+            const SizedBox(height: AppSpacing.md),
+            ShiftBreakField(
+              controller: _breakController,
+              // Hours depends on this field, so every keystroke needs to
+              // trigger a rebuild — a plain TextField doesn't do that on
+              // its own the way a value passed into `setState` would.
+              onChanged: (_) => setState(() {}),
+              errorText: _breakTooLong
+                  ? 'Break cannot exceed shift duration'
+                  : null,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            CalculatedHoursField(hours: _calculatedHours),
             const SizedBox(height: AppSpacing.md),
             TextField(
               controller: _notesController,
@@ -269,27 +391,5 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
         ),
       ),
     );
-  }
-
-  /// A short, human label for [type] within this form's dropdown — kept
-  /// local rather than shared with ShiftInfoCard's differently-phrased
-  /// labels ("Morning Shift" there vs. "Morning" here), same reasoning as
-  /// that file's own note on why these small mappings aren't forced to
-  /// share one definition.
-  static String _typeLabel(ShiftType type) {
-    switch (type) {
-      case ShiftType.morning:
-        return 'Morning';
-      case ShiftType.afternoon:
-        return 'Afternoon';
-      case ShiftType.night:
-        return 'Night';
-      case ShiftType.off:
-        return 'Day Off';
-      case ShiftType.leave:
-        return 'Leave';
-      case ShiftType.publicHoliday:
-        return 'Public Holiday';
-    }
   }
 }

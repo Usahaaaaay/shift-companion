@@ -23,6 +23,19 @@
 // the one place both the data layer and the presentation layer are
 // already allowed to depend on, so this is where a single, canonical copy
 // belongs rather than being duplicated in each.
+//
+// PHASE 3.4: added [breakMinutes] — a shift's unpaid break length, in
+// minutes. Added so a Shift Template's default break (see
+// ../entities/shift_template.dart) has somewhere to land when a user
+// applies a template and saves the resulting shift; before this, a shift
+// had no break concept at all.
+//
+// PHASE 3.5: [hours] is no longer something a user types — it's calculated
+// from [startTime]/[endTime]/[breakMinutes] by
+// core/utils/work_time_calculator.dart and written here read-only from the
+// shift form's perspective. This entity's own shape is unchanged (still a
+// plain nullable `double`); only who computes the value changed. See
+// decisions/0004-automatic-hours-calculation.md.
 
 import 'shift_type.dart';
 
@@ -35,6 +48,7 @@ class ShiftDetails {
     this.startTime,
     this.endTime,
     this.hours,
+    this.breakMinutes,
     this.notes,
   });
 
@@ -49,9 +63,16 @@ class ShiftDetails {
   /// [startTime].
   final String? endTime;
 
-  /// Total hours for the shift, e.g. 9.5. `null` for the same reason as
-  /// [startTime].
+  /// Total hours worked, e.g. 9.5 — calculated from [startTime]/[endTime]/
+  /// [breakMinutes] (see core/utils/work_time_calculator.dart), not typed
+  /// by the user. `null` for the same reason as [startTime] (no meaningful
+  /// time range to calculate from).
   final double? hours;
+
+  /// The shift's unpaid break length, in minutes, e.g. 30. `null` for the
+  /// same reason as [startTime] — independent of [hours], which stays the
+  /// raw clock span regardless of whether a break is set.
+  final int? breakMinutes;
 
   /// An optional free-text note about the shift, e.g. "Covering John's
   /// shift". `null` (or an empty/whitespace-only string) means there's no

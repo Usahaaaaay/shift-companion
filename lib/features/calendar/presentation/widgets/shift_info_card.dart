@@ -16,9 +16,19 @@
 // Holiday, currently) have no meaningful time range — showing them
 // unconditionally would mean rendering "null – null", which is worse than
 // simply omitting the row.
+//
+// PHASE 3.4: added a break row, shown only when [ShiftDetails.breakMinutes]
+// is present — same "only show it if it's there" rule as the hours row
+// right above it, for the same reason (not every shift has one).
+//
+// PHASE 3.5: the hours row now formats via WorkTimeCalculator.formatHours
+// instead of raw string interpolation, so a shift with a duration that
+// isn't a clean multiple of an hour (e.g. 100 minutes) can't render as
+// "1.6666666666666667 hrs" here the way plain `'${details.hours}'` would.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
+import '../../../../core/utils/work_time_calculator.dart';
 import '../../domain/entities/shift_details.dart';
 import '../../domain/entities/shift_type.dart';
 import '../shift_colors.dart';
@@ -88,8 +98,23 @@ class ShiftInfoCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '${details.hours} hrs',
+                '${WorkTimeCalculator.formatHours(details.hours!)} hrs',
                 style: textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+            if (details.breakMinutes != null) ...[
+              const SizedBox(height: AppSpacing.md),
+              Text(
+                'Break',
+                style: textTheme.labelMedium?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              Text(
+                '${details.breakMinutes} min',
+                style: textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),
               ),

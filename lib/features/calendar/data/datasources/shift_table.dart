@@ -24,6 +24,14 @@
 // guarantee rather than just an application-level convention, and it's
 // required for DriftShiftRepository's upsert-by-date to behave correctly
 // — see that file for how `saveShift` targets this constraint explicitly.
+//
+// PHASE 3.4: added [breakMinutes], a plain nullable column addition (no
+// constraint change), so `AppDatabase`'s migration for it is a simple
+// `addColumn` rather than the `TableMigration` recreate the v1->v2 change
+// above needed. Added alongside Shift Templates so a template's default
+// break can actually be persisted once copied into a shift, rather than
+// only living on the template itself — see
+// decisions/0003-shift-templates-minutes-storage.md.
 
 import 'package:drift/drift.dart';
 import '../../domain/entities/shift_type.dart';
@@ -63,4 +71,9 @@ class Shifts extends Table {
 
   /// Which kind of shift this is, stored as the [ShiftType] enum's name.
   TextColumn get shiftType => textEnum<ShiftType>()();
+
+  /// The shift's unpaid break length, in minutes — nullable, matching
+  /// [ShiftDetails.breakMinutes] for the same reason as [startTime]: not
+  /// every shift type has a meaningful break.
+  IntColumn get breakMinutes => integer().nullable()();
 }

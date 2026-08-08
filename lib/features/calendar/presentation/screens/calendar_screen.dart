@@ -51,6 +51,14 @@
 // Neither required any repository or database change — see this feature's
 // Phase 3.3 summary for why.
 //
+// PHASE 3.4: added [getTemplates] — a thin pass-through to
+// `widget.repository.getTemplates()`, exactly like [getShift] already is
+// for `getShift`. This screen still doesn't compute or cache anything
+// about templates itself; it's simply the one place (per
+// ARCHITECTURE.md's "no widget touches the database directly" rule) that
+// holds the repository and can hand a read of it down to whatever needs
+// one.
+//
 // Unlike the Dashboard, this screen uses a real AppBar — per
 // docs/Design_System.md Section 8.8, every screen except the landing tab
 // gets one; Calendar isn't the landing tab, so it follows the default.
@@ -58,6 +66,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../domain/entities/shift_details.dart';
+import '../../domain/entities/shift_template.dart';
 import '../../domain/repositories/shift_repository.dart';
 import '../widgets/calendar_bottom_sheet.dart';
 import '../widgets/calendar_grid.dart';
@@ -117,6 +126,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
   Future<ShiftDetails?> getShift(DateTime date) =>
       widget.repository.getShift(date);
 
+  /// Returns every currently-stored Shift Template, for the create/edit
+  /// form's Template selector. Passed down as a callback (not a value),
+  /// same as [getShift] — it's re-invoked fresh each time the form opens
+  /// rather than read once here and grown stale.
+  Future<List<ShiftTemplate>> getTemplates() =>
+      widget.repository.getTemplates();
+
   /// Records [shift] for [date] via [widget.repository] — creating a new
   /// row or overwriting an existing one; `ShiftRepository.saveShift` is
   /// already an upsert, so there's no separate path for either case — then
@@ -144,6 +160,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       getShift: getShift,
       onSaveShift: saveShift,
       onDeleteShift: deleteShift,
+      getTemplates: getTemplates,
     );
   }
 

@@ -2,21 +2,29 @@
 //
 // The Calendar's shift-details bottom sheet — shown when a day is
 // selected. Presentation only: it renders whatever ShiftDetails
-// CalendarScreen's in-memory state currently has for the selected date
-// (Phase 2.5), via DateHeader, ShiftInfoCard, and NotesSection. No
-// editing, no persistence, no forms, no business logic.
+// CalendarScreen's repository currently has for the selected date, via
+// DateHeader, ShiftInfoCard, and NotesSection. No editing, no forms, no
+// business logic.
 //
 // Rounded top corners use AppSpacing.radiusLg, matching
 // docs/Design_System.md Section 6/7's guidance that a modal bottom sheet
 // is exactly the kind of "prominent, full-width surface" that radius (and
 // real elevation, rather than the app's usual flat/tonal cards) is for.
 //
-// PHASE 2.5: this widget is now Stateful. It no longer reads a fixed mock
-// value — [getShift] is a callback into CalendarScreen's live in-memory
-// map, and [onAddShift] is how a newly-chosen shift gets written back to
-// it. The reason this needs its own local state (rather than just relying
-// on CalendarScreen's setState) is explained on _CalendarBottomSheetState
-// below.
+// PHASE 2.5: this widget is Stateful. [getShift] is a callback into
+// CalendarScreen's data, and [onAddShift] is how a newly-chosen shift gets
+// written back. The reason this needs its own local state (rather than
+// just relying on CalendarScreen's setState) is explained on
+// _CalendarBottomSheetState below.
+//
+// PHASE 3.2A: [getShift]/[onAddShift] are now `Future`-returning, matching
+// ShiftRepository's now-asynchronous contract (real SQLite access, once
+// DriftShiftRepository is wired in, can't be read synchronously). This
+// sheet now loads its data via a held `Future` + `FutureBuilder` instead
+// of calling [getShift] directly inside `build()` — the one genuinely
+// necessary UI-facing consequence of that interface change, kept as small
+// as possible: no new visual states beyond a brief loading spinner while
+// the (typically near-instant) query resolves.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
@@ -42,8 +50,8 @@ import 'shift_picker_bottom_sheet.dart';
 Future<void> showCalendarBottomSheet(
   BuildContext context, {
   required DateTime selectedDate,
-  required ShiftDetails? Function(DateTime date) getShift,
-  required void Function(DateTime date, ShiftType type) onAddShift,
+  required Future<ShiftDetails?> Function(DateTime date) getShift,
+  required Future<void> Function(DateTime date, ShiftType type) onAddShift,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -83,21 +91,34 @@ class CalendarBottomSheet extends StatefulWidget {
   /// The selected date this sheet describes.
   final DateTime selectedDate;
 
-  /// Reads the current shift for a date from CalendarScreen's live
-  /// in-memory map. A callback (not a value read once) so this sheet can
-  /// re-invoke it after a shift is added, rather than being stuck showing
-  /// whatever was true when the sheet first opened.
-  final ShiftDetails? Function(DateTime date) getShift;
+  /// Reads the current shift for a date from CalendarScreen's repository.
+  /// A callback (not a value read once) so this sheet can re-invoke it
+  /// after a shift is added, rather than being stuck showing whatever was
+  /// true when the sheet first opened.
+  final Future<ShiftDetails?> Function(DateTime date) getShift;
 
-  /// Writes a newly-chosen shift type back to CalendarScreen's in-memory
-  /// map for [selectedDate].
-  final void Function(DateTime date, ShiftType type) onAddShift;
+  /// Writes a newly-chosen shift type back through CalendarScreen's
+  /// repository for [selectedDate].
+  final Future<void> Function(DateTime date, ShiftType type) onAddShift;
 
   @override
   State<CalendarBottomSheet> createState() => _CalendarBottomSheetState();
 }
 
 class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
+  /// The in-flight/most-recent read of this sheet's shift. Held in state
+  /// (rather than calling `widget.getShift` directly inside `build()`, no
+  /// longer possible now that it's async) so [_openShiftPicker] can
+  /// reassign it to trigger a refetch without losing track of what's
+  /// already loaded.
+  late Future<ShiftDetails?> _detailsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsFuture = widget.getShift(widget.selectedDate);
+  }
+
   /// Opens the Shift Picker on top of this sheet, and — once a shift is
   /// chosen — refreshes this sheet in place.
   ///
@@ -105,50 +126,64 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
   /// subtree (`showModalBottomSheet` mounts it in the Navigator's overlay),
   /// so calling `widget.onAddShift` alone updates CalendarScreen's data
   /// and rebuilds the calendar grid, but does *not* rebuild this
-  /// already-open sheet. The empty `setState` below is what makes that
-  /// happen: it doesn't change any state itself, it just tells this sheet
-  /// to rebuild, which re-invokes `widget.getShift` and picks up the
-  /// change that already happened.
+  /// already-open sheet. Reassigning `_detailsFuture` inside `setState` is
+  /// what makes that happen: it re-invokes `widget.getShift`, so the
+  /// `FutureBuilder` below picks up the change that already happened.
   Future<void> _openShiftPicker() {
     return showShiftPickerBottomSheet(
       context,
-      onShiftSelected: (type) {
-        widget.onAddShift(widget.selectedDate, type);
-        if (mounted) setState(() {});
+      onShiftSelected: (type) async {
+        await widget.onAddShift(widget.selectedDate, type);
+        if (mounted) {
+          setState(() {
+            _detailsFuture = widget.getShift(widget.selectedDate);
+          });
+        }
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final details = widget.getShift(widget.selectedDate);
-
     // Roughly half the screen height (within the requested 45–55% band).
     // A fraction rather than a fixed pixel value, so this scales correctly
     // across small phones, large phones, and tablets alike.
     return FractionallySizedBox(
       heightFactor: 0.5,
-      child: SingleChildScrollView(
-        // A scrollable body — rather than assuming the content always
-        // fits — so larger system text sizes or a longer note can't cause
-        // an overflow within the fixed-height sheet.
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.lg,
-          AppSpacing.sm,
-          AppSpacing.lg,
-          AppSpacing.lg,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DateHeader(date: widget.selectedDate),
-            const SizedBox(height: AppSpacing.lg),
-            if (details == null)
-              ..._noShiftContent(context)
-            else
-              ..._shiftContent(details),
-          ],
-        ),
+      child: FutureBuilder<ShiftDetails?>(
+        future: _detailsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            // Near-instant for both MemoryShiftRepository and a small
+            // SQLite table, so this is a brief flash in practice, not a
+            // real loading screen.
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final details = snapshot.data;
+          return SingleChildScrollView(
+            // A scrollable body — rather than assuming the content always
+            // fits — so larger system text sizes or a longer note can't
+            // cause an overflow within the fixed-height sheet.
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              AppSpacing.sm,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DateHeader(date: widget.selectedDate),
+                const SizedBox(height: AppSpacing.lg),
+                if (details == null)
+                  ..._noShiftContent(context)
+                else
+                  ..._shiftContent(details),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

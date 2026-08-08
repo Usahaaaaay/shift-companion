@@ -28,3 +28,4 @@ One file per decision, numbered sequentially: `NNNN-short-title.md`. Each file c
 | # | Title | Status |
 |---|---|---|
 | [0001](0001-state-management-and-navigation.md) | State management & navigation: Riverpod + go_router | Accepted |
+| [0002](0002-persistence-drift-sqlite.md) | Local persistence: Drift (SQLite) | Accepted |

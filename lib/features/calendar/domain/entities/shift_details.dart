@@ -14,6 +14,15 @@
 // deliberately doesn't add a time-picking step. `null` means "not
 // applicable for this shift", not "unknown" — see shift_info_card.dart for
 // how that's displayed.
+//
+// PHASE 2.6: [ShiftDetails.placeholderFor] moved here from what was
+// previously a private static method on CalendarScreen
+// (`_detailsForType`), unchanged in behavior. It's needed by both
+// MemoryShiftRepository (to build its demo seed data) and CalendarScreen
+// (to build a newly-created shift before saving it) — the domain layer is
+// the one place both the data layer and the presentation layer are
+// already allowed to depend on, so this is where a single, canonical copy
+// belongs rather than being duplicated in each.
 
 import 'shift_type.dart';
 
@@ -48,4 +57,40 @@ class ShiftDetails {
   /// shift". `null` (or an empty/whitespace-only string) means there's no
   /// note to show.
   final String? notes;
+
+  /// Builds a placeholder [ShiftDetails] for [type] — a fixed, sensible
+  /// time range for the three working shift types, and no time range at
+  /// all for the three that don't have one (there's nothing meaningful to
+  /// show for a day off). Used wherever a shift needs to be built from
+  /// just a chosen type, so a given type looks the same regardless of
+  /// whether it came from demo seed data or a user's Shift Picker choice.
+  factory ShiftDetails.placeholderFor(ShiftType type) {
+    switch (type) {
+      case ShiftType.morning:
+        return const ShiftDetails(
+          type: ShiftType.morning,
+          startTime: '7:00 AM',
+          endTime: '3:00 PM',
+          hours: 8,
+        );
+      case ShiftType.afternoon:
+        return const ShiftDetails(
+          type: ShiftType.afternoon,
+          startTime: '3:00 PM',
+          endTime: '11:00 PM',
+          hours: 8,
+        );
+      case ShiftType.night:
+        return const ShiftDetails(
+          type: ShiftType.night,
+          startTime: '11:00 PM',
+          endTime: '7:00 AM',
+          hours: 8,
+        );
+      case ShiftType.off:
+      case ShiftType.leave:
+      case ShiftType.publicHoliday:
+        return ShiftDetails(type: type);
+    }
+  }
 }

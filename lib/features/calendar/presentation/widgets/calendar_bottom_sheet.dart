@@ -3,8 +3,10 @@
 // The Calendar's shift-details bottom sheet — shown when a day is
 // selected. Presentation only: it renders whatever ShiftDetails
 // CalendarScreen's repository currently has for the selected date, via
-// DateHeader, ShiftInfoCard, and NotesSection. No editing, no forms, no
-// business logic.
+// DateHeader, ShiftInfoCard, and NotesSection, plus (Phase 3.3) an entry
+// point into the create/edit form. No business logic — every save/delete
+// decision is made by ShiftFormBottomSheet and CalendarScreen; this sheet
+// only knows how to open that form and refresh itself afterward.
 //
 // Rounded top corners use AppSpacing.radiusLg, matching
 // docs/Design_System.md Section 6/7's guidance that a modal bottom sheet
@@ -12,28 +14,27 @@
 // real elevation, rather than the app's usual flat/tonal cards) is for.
 //
 // PHASE 2.5: this widget is Stateful. [getShift] is a callback into
-// CalendarScreen's data, and [onAddShift] is how a newly-chosen shift gets
-// written back. The reason this needs its own local state (rather than
-// just relying on CalendarScreen's setState) is explained on
+// CalendarScreen's data. The reason this needs its own local state
+// (rather than just relying on CalendarScreen's setState) is explained on
 // _CalendarBottomSheetState below.
 //
-// PHASE 3.2A: [getShift]/[onAddShift] are now `Future`-returning, matching
-// ShiftRepository's now-asynchronous contract (real SQLite access, once
-// DriftShiftRepository is wired in, can't be read synchronously). This
-// sheet now loads its data via a held `Future` + `FutureBuilder` instead
-// of calling [getShift] directly inside `build()` — the one genuinely
-// necessary UI-facing consequence of that interface change, kept as small
-// as possible: no new visual states beyond a brief loading spinner while
-// the (typically near-instant) query resolves.
-
+// PHASE 3.2A: [getShift] is `Future`-returning, matching ShiftRepository's
+// asynchronous contract (real SQLite access can't be read synchronously).
+// This sheet loads its data via a held `Future` + `FutureBuilder` instead
+// of calling [getShift] directly inside `build()`.
+//
+// PHASE 3.3: [onAddShift] (create-only, type-only) is replaced by
+// [onSaveShift] (create *and* edit, full ShiftDetails) and [onDeleteShift].
+// The no-shift view's "Add Shift" button and the new has-shift view's
+// "Edit Shift" button both open the same ShiftFormBottomSheet — see that
+// file for why there's only one form widget for both cases.
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../domain/entities/shift_details.dart';
-import '../../domain/entities/shift_type.dart';
 import 'date_header.dart';
 import 'notes_section.dart';
+import 'shift_form_bottom_sheet.dart';
 import 'shift_info_card.dart';
-import 'shift_picker_bottom_sheet.dart';
 
 /// Opens the Calendar's shift-details bottom sheet for [selectedDate].
 ///
@@ -44,14 +45,15 @@ import 'shift_picker_bottom_sheet.dart';
 ///
 /// [selectedDate] is named (rather than positional) so this signature can
 /// grow without turning every existing call site into a breaking change to
-/// fix — [getShift] and [onAddShift] are exactly that kind of growth,
-/// added in Phase 2.5 without touching the call site's `selectedDate:`
-/// argument.
+/// fix — [getShift], [onSaveShift], and [onDeleteShift] are exactly that
+/// kind of growth, added across several phases without touching the call
+/// site's `selectedDate:` argument.
 Future<void> showCalendarBottomSheet(
   BuildContext context, {
   required DateTime selectedDate,
   required Future<ShiftDetails?> Function(DateTime date) getShift,
-  required Future<void> Function(DateTime date, ShiftType type) onAddShift,
+  required Future<void> Function(DateTime date, ShiftDetails shift) onSaveShift,
+  required Future<void> Function(DateTime date) onDeleteShift,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -72,20 +74,23 @@ Future<void> showCalendarBottomSheet(
     builder: (context) => CalendarBottomSheet(
       selectedDate: selectedDate,
       getShift: getShift,
-      onAddShift: onAddShift,
+      onSaveShift: onSaveShift,
+      onDeleteShift: onDeleteShift,
     ),
   );
 }
 
 /// The Calendar's shift-details sheet: a date header, then either the
-/// day's shift info + notes, or a "no shift scheduled" prompt to add one.
+/// day's shift info + notes + an Edit entry point, or a "no shift
+/// scheduled" prompt to add one.
 class CalendarBottomSheet extends StatefulWidget {
   /// Creates the shift-details bottom sheet content for [selectedDate].
   const CalendarBottomSheet({
     super.key,
     required this.selectedDate,
     required this.getShift,
-    required this.onAddShift,
+    required this.onSaveShift,
+    required this.onDeleteShift,
   });
 
   /// The selected date this sheet describes.
@@ -93,13 +98,18 @@ class CalendarBottomSheet extends StatefulWidget {
 
   /// Reads the current shift for a date from CalendarScreen's repository.
   /// A callback (not a value read once) so this sheet can re-invoke it
-  /// after a shift is added, rather than being stuck showing whatever was
+  /// after a save or delete, rather than being stuck showing whatever was
   /// true when the sheet first opened.
   final Future<ShiftDetails?> Function(DateTime date) getShift;
 
-  /// Writes a newly-chosen shift type back through CalendarScreen's
-  /// repository for [selectedDate].
-  final Future<void> Function(DateTime date, ShiftType type) onAddShift;
+  /// Writes a created-or-edited shift back through CalendarScreen's
+  /// repository for [selectedDate]. The same callback for both cases —
+  /// see shift_form_bottom_sheet.dart for why.
+  final Future<void> Function(DateTime date, ShiftDetails shift) onSaveShift;
+
+  /// Removes the shift for [selectedDate] through CalendarScreen's
+  /// repository.
+  final Future<void> Function(DateTime date) onDeleteShift;
 
   @override
   State<CalendarBottomSheet> createState() => _CalendarBottomSheetState();
@@ -107,10 +117,9 @@ class CalendarBottomSheet extends StatefulWidget {
 
 class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
   /// The in-flight/most-recent read of this sheet's shift. Held in state
-  /// (rather than calling `widget.getShift` directly inside `build()`, no
-  /// longer possible now that it's async) so [_openShiftPicker] can
-  /// reassign it to trigger a refetch without losing track of what's
-  /// already loaded.
+  /// (rather than calling `widget.getShift` directly inside `build()`, not
+  /// possible now that it's async) so [_openForm] can reassign it to
+  /// trigger a refetch without losing track of what's already loaded.
   late Future<ShiftDetails?> _detailsFuture;
 
   @override
@@ -119,28 +128,40 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
     _detailsFuture = widget.getShift(widget.selectedDate);
   }
 
-  /// Opens the Shift Picker on top of this sheet, and — once a shift is
-  /// chosen — refreshes this sheet in place.
+  /// Opens the create/edit form on top of this sheet, and — once it saves
+  /// or deletes — refreshes this sheet in place.
   ///
   /// This sheet's content lives outside CalendarScreen's own widget
   /// subtree (`showModalBottomSheet` mounts it in the Navigator's overlay),
-  /// so calling `widget.onAddShift` alone updates CalendarScreen's data
-  /// and rebuilds the calendar grid, but does *not* rebuild this
-  /// already-open sheet. Reassigning `_detailsFuture` inside `setState` is
-  /// what makes that happen: it re-invokes `widget.getShift`, so the
-  /// `FutureBuilder` below picks up the change that already happened.
-  Future<void> _openShiftPicker() {
-    return showShiftPickerBottomSheet(
+  /// so updating CalendarScreen's data alone rebuilds the calendar grid,
+  /// but does *not* rebuild this already-open sheet. Reassigning
+  /// `_detailsFuture` inside `setState` is what makes that happen: it
+  /// re-invokes `widget.getShift`, so the `FutureBuilder` below picks up
+  /// whatever changed — a newly created/edited shift, or its absence after
+  /// a delete (which naturally falls back to the "no shift scheduled"
+  /// view, no special-casing needed).
+  Future<void> _openForm({ShiftDetails? initialShift}) {
+    return showShiftFormBottomSheet(
       context,
-      onShiftSelected: (type) async {
-        await widget.onAddShift(widget.selectedDate, type);
-        if (mounted) {
-          setState(() {
-            _detailsFuture = widget.getShift(widget.selectedDate);
-          });
-        }
+      date: widget.selectedDate,
+      initialShift: initialShift,
+      onSave: (date, shift) async {
+        await widget.onSaveShift(date, shift);
+        _refresh();
+      },
+      onDelete: (date) async {
+        await widget.onDeleteShift(date);
+        _refresh();
       },
     );
+  }
+
+  void _refresh() {
+    if (mounted) {
+      setState(() {
+        _detailsFuture = widget.getShift(widget.selectedDate);
+      });
+    }
   }
 
   @override
@@ -179,7 +200,7 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
                 if (details == null)
                   ..._noShiftContent(context)
                 else
-                  ..._shiftContent(details),
+                  ..._shiftContent(context, details),
               ],
             ),
           );
@@ -206,7 +227,7 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
       SizedBox(
         width: double.infinity,
         child: FilledButton.tonalIcon(
-          onPressed: _openShiftPicker,
+          onPressed: () => _openForm(),
           icon: const Icon(Icons.add),
           label: const Text('Add Shift'),
         ),
@@ -214,11 +235,20 @@ class _CalendarBottomSheetState extends State<CalendarBottomSheet> {
     ];
   }
 
-  /// Content shown when [widget.selectedDate] already has a shift —
-  /// unchanged from Phase 2.4's layout.
-  List<Widget> _shiftContent(ShiftDetails details) {
+  /// Content shown when [widget.selectedDate] already has a shift — the
+  /// existing read-only layout, plus (Phase 3.3) an Edit entry point.
+  List<Widget> _shiftContent(BuildContext context, ShiftDetails details) {
     return [
       ShiftInfoCard(details: details),
+      const SizedBox(height: AppSpacing.md),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => _openForm(initialShift: details),
+          icon: const Icon(Icons.edit_outlined),
+          label: const Text('Edit Shift'),
+        ),
+      ),
       const SizedBox(height: AppSpacing.lg),
       const Divider(),
       const SizedBox(height: AppSpacing.lg),

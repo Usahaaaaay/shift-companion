@@ -39,9 +39,17 @@
 // see that interface's own note). CalendarGrid still needs a plain
 // `Map<DateTime, ShiftDetails>` synchronously inside `build()`, so this
 // screen now keeps a local [_shifts] cache: loaded once in `initState`,
-// reloaded after every `addShift`. This is a cache of what the repository
+// reloaded after every write. This is a cache of what the repository
 // already holds, not a second source of truth — the repository is still
 // the only place data is actually written.
+//
+// PHASE 3.3: `addShift(date, type)` — which only ever built a
+// ShiftDetails.placeholderFor(type) — is replaced by [saveShift], which
+// takes a full ShiftDetails from the new create/edit form. [deleteShift]
+// is new: ShiftRepository.deleteShift already existed (added in Phase
+// 2.6), but nothing called it until the form's Delete button needed it.
+// Neither required any repository or database change — see this feature's
+// Phase 3.3 summary for why.
 //
 // Unlike the Dashboard, this screen uses a real AppBar — per
 // docs/Design_System.md Section 8.8, every screen except the landing tab
@@ -50,7 +58,6 @@
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
 import '../../domain/entities/shift_details.dart';
-import '../../domain/entities/shift_type.dart';
 import '../../domain/repositories/shift_repository.dart';
 import '../widgets/calendar_bottom_sheet.dart';
 import '../widgets/calendar_grid.dart';
@@ -105,14 +112,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   /// Returns the shift assigned to [date], if any. Passed down to the
   /// bottom sheet as a callback (see calendar_bottom_sheet.dart) rather
-  /// than a value, so it can be re-read after [addShift] changes it.
+  /// than a value, so it can be re-read after [saveShift]/[deleteShift]
+  /// change it.
   Future<ShiftDetails?> getShift(DateTime date) =>
       widget.repository.getShift(date);
 
-  /// Records [type] as the shift for [date] via [widget.repository], then
+  /// Records [shift] for [date] via [widget.repository] — creating a new
+  /// row or overwriting an existing one; `ShiftRepository.saveShift` is
+  /// already an upsert, so there's no separate path for either case — then
   /// reloads [_shifts] so the calendar grid's dot updates immediately.
-  Future<void> addShift(DateTime date, ShiftType type) async {
-    await widget.repository.saveShift(date, ShiftDetails.placeholderFor(type));
+  Future<void> saveShift(DateTime date, ShiftDetails shift) async {
+    await widget.repository.saveShift(date, shift);
+    await _loadShifts();
+  }
+
+  /// Removes the shift for [date] via [widget.repository], then reloads
+  /// [_shifts] so the calendar grid's dot disappears immediately.
+  Future<void> deleteShift(DateTime date) async {
+    await widget.repository.deleteShift(date);
     await _loadShifts();
   }
 
@@ -125,7 +142,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
       context,
       selectedDate: date,
       getShift: getShift,
-      onAddShift: addShift,
+      onSaveShift: saveShift,
+      onDeleteShift: deleteShift,
     );
   }
 

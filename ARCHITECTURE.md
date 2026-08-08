@@ -63,6 +63,8 @@ lib/
         providers/           # Riverpod providers/notifiers — the feature's state layer
         screens/              # full-page widgets, wired to a route
         widgets/              # widgets private to this feature
+  database/                 # the app's single Drift database — see below
+    app_database.dart        # opens SQLite, registers every feature's tables
   routing/                  # go_router route definitions, wired to screens
   app.dart                  # root widget: MaterialApp.router + ProviderScope wiring
   main.dart                 # entry point only — no logic beyond bootstrapping
@@ -74,15 +76,33 @@ change — which is also why the "5+ files touched" rule in CLAUDE.md is a usefu
 test: crossing that threshold for what looks like a single-feature change usually means
 something is coupled that shouldn't be.
 
+`database/` is a similar top-level exception to `core/` for the same reason `routing/`
+is: `AppDatabase` is an app-level composition root that imports table definitions from
+every feature that has one (e.g. `features/calendar/data/datasources/shift_table.dart`)
+to register them in one place, exactly like `app_router.dart` imports every feature's
+screens to register their routes. Putting it inside `core/` would invert the dependency
+direction `core/` depends on: nothing in `core/` should ever import from `features/`.
+Each feature's own table definitions still live inside that feature's
+`data/datasources/`, per the row below — only the aggregating `AppDatabase` class itself
+sits outside.
+
 ## Chosen stack
 
 | Concern | Choice | Rationale (full writeup in decisions/) |
 |---|---|---|
 | State management / DI | Riverpod | Compile-safe DI, testable providers, no `BuildContext` needed to read state, scales well feature-by-feature. |
 | Navigation | go_router | Declarative, deep-link friendly, official Flutter-team-recommended router, integrates cleanly with Riverpod for auth-gated redirects. |
+| Local persistence | Drift (SQLite) | Type-safe generated queries, compile-time-checked schema, first-class migration support. See [decisions/0002](decisions/0002-persistence-drift-sqlite.md). |
+
+**Local persistence status:** the Drift *infrastructure* exists (`database/app_database.dart`
+and each feature's own tables, e.g. `Shifts`) but no repository reads from or writes to
+it yet — `MemoryShiftRepository` is still the only `ShiftRepository` implementation in
+use. A future phase adds a `DriftShiftRepository implements ShiftRepository` and swaps
+which one `routing/app_router.dart` constructs; nothing above the repository interface
+(the UI) needs to change when that happens.
 
 Not yet decided (deferred until a feature needs it — see CLAUDE.md's "decide when
-forced" rule): local persistence, backend/API integration, authentication.
+forced" rule): backend/API integration, authentication.
 
 ## Testing implications
 

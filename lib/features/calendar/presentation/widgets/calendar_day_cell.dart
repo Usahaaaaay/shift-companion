@@ -2,19 +2,22 @@
 //
 // A single day cell in the Calendar's monthly grid (see calendar_grid.dart).
 // Renders a date, whether it belongs to the displayed month, whether it's
-// today, and — as of Phase 2.2 — a small colored dot when a shift is
-// assigned to that date. Per docs/Design_System.md Section 9.2, "today" is
-// drawn as a ring around the cell rather than a fill, specifically so it
-// can coexist with a shift-type indicator without the two competing for
-// the same visual channel; the dot added in Phase 2.2 is exactly that
-// coexistence in practice — ring and dot are independent visual channels
-// (border vs. small fill) that can both be present on the same cell.
+// today, whether it's the selected day, and a small colored dot when a
+// shift is assigned to that date. Per docs/Design_System.md Section 9.2,
+// "today" is drawn as a ring around the cell rather than a fill,
+// specifically so it can coexist with other indicators without competing
+// for the same visual channel — the shift dot (Phase 2.2) and the selected
+// circle (Phase 2.3) are exactly that coexistence in practice: today's ring
+// (a border), the shift dot (a small fill above the number), and the
+// selected state (a filled circle around just the number) are three
+// independent visual channels that can all be present on one cell at once.
 //
-// PHASE 2.2: when no shift is assigned (`shiftType == null`), this cell
-// renders identically to Phase 2.1 — same widget, same layout, untouched.
-// The dot only appears when a shift exists, per this phase's requirement.
-// Still no tap handling, no colors beyond the today ring and the shift
-// dot, no animation — that stays out of scope for a later phase.
+// PHASE 2.3: cells are now tappable — but only when [onTap] is provided.
+// calendar_grid.dart only wires up taps for dates within the displayed
+// month; the previous month's dimmed leading days stay non-interactive in
+// this phase (see calendar_grid.dart's own note on why). When neither a
+// shift nor a selection applies, this cell renders exactly as it always
+// has — same single Text widget, untouched.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
@@ -30,7 +33,9 @@ class CalendarDayCell extends StatelessWidget {
     required this.date,
     required this.isCurrentMonth,
     required this.isToday,
+    this.isSelected = false,
     this.shiftType,
+    this.onTap,
   });
 
   /// The date this cell represents.
@@ -44,65 +49,118 @@ class CalendarDayCell extends StatelessWidget {
   /// Whether [date] is today.
   final bool isToday;
 
+  /// Whether this is the single currently-selected day. At most one cell
+  /// in the grid should have this `true` at a time — that invariant is
+  /// enforced by CalendarScreen (the state owner) and CalendarGrid (which
+  /// compares each cell's date against it), not by this widget; this cell
+  /// only renders whatever it's told.
+  final bool isSelected;
+
   /// The shift assigned to [date], if any. `null` means no shift is
-  /// recorded — the cell renders exactly as it did before this phase.
+  /// recorded.
   final ShiftType? shiftType;
+
+  /// Called when this cell is tapped. `null` means the cell isn't
+  /// selectable (currently: dates outside the displayed month) — the cell
+  /// simply isn't interactive, rather than silently doing nothing on tap.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final dayText = Text(
+    final Color numberColor;
+    if (!isCurrentMonth) {
+      numberColor = colorScheme.onSurfaceVariant.withValues(alpha: 0.4);
+    } else if (isSelected) {
+      // Sits on a filled primary circle below, so it needs the paired
+      // "on primary" color for guaranteed contrast — not the plain
+      // "today" tint, which would be illegible on that fill.
+      numberColor = colorScheme.onPrimary;
+    } else if (isToday) {
+      numberColor = colorScheme.primary;
+    } else {
+      numberColor = colorScheme.onSurface;
+    }
+
+    final dayNumber = Text(
       '${date.day}',
       style: textTheme.bodyLarge?.copyWith(
-        fontWeight: isToday ? FontWeight.w700 : FontWeight.w500,
-        color: !isCurrentMonth
-            ? colorScheme.onSurfaceVariant.withValues(alpha: 0.4)
-            : isToday
-            ? colorScheme.primary
-            : colorScheme.onSurface,
+        fontWeight: isToday || isSelected ? FontWeight.w700 : FontWeight.w500,
+        color: numberColor,
       ),
     );
 
+    // Selection is a filled circle drawn around just the day number —
+    // nested inside the cell's own container below, not replacing it, so
+    // it can coexist with the today ring and the shift dot.
+    final numberWidget = isSelected
+        ? Container(
+            width: 28,
+            height: 28,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: colorScheme.primary,
+            ),
+            child: dayNumber,
+          )
+        : dayNumber;
+
+    final hasExtraContent = shiftType != null || isSelected;
+
+    final content = !hasExtraContent
+        ? numberWidget
+        // FittedBox guards against overflow on small phones or larger
+        // system text-size settings (docs/Design_System.md Section
+        // 12/13 — dynamic type must not break a layout) now that a cell
+        // can hold a dot and/or a selected circle in addition to the day
+        // number.
+        : FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (shiftType != null) ...[
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: ShiftColors.colorFor(shiftType!),
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                ],
+                numberWidget,
+              ],
+            ),
+          );
+
     return Semantics(
       label: _semanticLabel(),
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-          // Unchanged from Phase 2.1 — the today ring is a border, drawn
-          // independently of the shift dot below, so the two can never
-          // visually conflict.
-          border: isToday
-              ? Border.all(color: colorScheme.primary, width: 2)
-              : null,
+      selected: isSelected,
+      button: onTap != null,
+      child: GestureDetector(
+        onTap: onTap,
+        // Explicit rather than relying on Container's default hit-testing
+        // behavior, so the full cell is reliably tappable regardless of
+        // whether it happens to be painting a border this frame.
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+            // Unchanged from Phase 2.1/2.2 — the today ring is a border,
+            // independent of the selected fill and the shift dot, so all
+            // three can be visible on the same cell at once.
+            border: isToday
+                ? Border.all(color: colorScheme.primary, width: 2)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: content,
         ),
-        alignment: Alignment.center,
-        child: shiftType == null
-            ? dayText
-            // FittedBox guards against overflow on small phones or larger
-            // system text-size settings (docs/Design_System.md Section
-            // 12/13 — dynamic type must not break a layout) now that a
-            // cell can hold a dot plus the day number instead of the
-            // number alone.
-            : FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: ShiftColors.colorFor(shiftType!),
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xs),
-                    dayText,
-                  ],
-                ),
-              ),
       ),
     );
   }

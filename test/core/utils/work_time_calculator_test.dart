@@ -68,6 +68,55 @@ void main() {
     });
   });
 
+  group('formatDuration (Phase 3.6 bug fix — human-readable "Xh Ym")', () {
+    test('0 minutes -> "0m"', () {
+      expect(WorkTimeCalculator.formatDuration(0), '0m');
+    });
+
+    test('30 minutes -> "30m"', () {
+      expect(WorkTimeCalculator.formatDuration(30), '30m');
+    });
+
+    test('60 minutes -> "1h" (no trailing zero minutes)', () {
+      expect(WorkTimeCalculator.formatDuration(60), '1h');
+    });
+
+    test('90 minutes -> "1h 30m"', () {
+      expect(WorkTimeCalculator.formatDuration(90), '1h 30m');
+    });
+
+    test('530 minutes -> "8h 50m"', () {
+      expect(WorkTimeCalculator.formatDuration(530), '8h 50m');
+    });
+
+    test('480 minutes -> "8h" (no trailing zero minutes)', () {
+      expect(WorkTimeCalculator.formatDuration(480), '8h');
+    });
+
+    test('605 minutes -> "10h 5m"', () {
+      expect(WorkTimeCalculator.formatDuration(605), '10h 5m');
+    });
+  });
+
+  group('formatDurationFromHours (Phase 3.6 bug fix)', () {
+    test('the reported bug: 07:00-16:30, 40 min unpaid break displays '
+        '"8h 50m", not "8.83 hrs"', () {
+      // 570 minutes raw (07:00-16:30) - 40 = 530 minutes = 8.8333... hrs.
+      final hours = WorkTimeCalculator.calculateWorkedHours(
+        startMinutes: 7 * 60,
+        endMinutes: 16 * 60 + 30,
+        breakMinutes: 40,
+      );
+      expect(WorkTimeCalculator.formatDurationFromHours(hours), '8h 50m');
+    });
+
+    test('recovers the exact original minute count via rounding', () {
+      expect(WorkTimeCalculator.formatDurationFromHours(8.0), '8h');
+      expect(WorkTimeCalculator.formatDurationFromHours(7.5), '7h 30m');
+      expect(WorkTimeCalculator.formatDurationFromHours(0.0), '0m');
+    });
+  });
+
   group('overnight handling', () {
     test(
       'isOvernight is true when finish is earlier in the day than start',

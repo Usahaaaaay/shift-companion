@@ -26,6 +26,11 @@
 // isn't a clean multiple of an hour (e.g. 100 minutes) can't render as
 // "1.6666666666666667 hrs" here the way plain `'${details.hours}'` would.
 //
+// PHASE 3.6 (bug fix): switched from formatHours ("8.83 hrs") to
+// formatDurationFromHours ("8h 50m") — manual verification found the
+// decimal form read as confusing/wrong, even though the underlying
+// calculation was always correct. See that method's own doc comment.
+//
 // PHASE 3.6: the break row's label reads "Unpaid break", not "Break" —
 // see decisions/0005-unpaid-break-terminology.md. `breakMinutes` itself is
 // unchanged.
@@ -102,7 +107,7 @@ class ShiftInfoCard extends StatelessWidget {
                 ),
               ),
               Text(
-                '${WorkTimeCalculator.formatHours(details.hours!)} hrs',
+                WorkTimeCalculator.formatDurationFromHours(details.hours!),
                 style: textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                 ),

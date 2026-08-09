@@ -12,12 +12,18 @@
 // disabled-looking TextField would suggest otherwise. See
 // decisions/0004-automatic-hours-calculation.md for the full reasoning
 // behind removing manual Hours entry.
+//
+// PHASE 3.6 (bug fix): displays via WorkTimeCalculator.formatDurationFromHours
+// ("8h 50m") instead of formatHours ("8.83 h") — manual verification found
+// the decimal form read as confusing/wrong to users, even though the
+// underlying calculation was always correct. See that method's own doc
+// comment.
 
 import 'package:flutter/material.dart';
 import '../../../../core/utils/work_time_calculator.dart';
 
 /// Displays [hours] (already computed by WorkTimeCalculator) the same way
-/// everywhere it's shown — "7.5 h", or an em dash while there's nothing to
+/// everywhere it's shown — "8h 50m", or an em dash while there's nothing to
 /// calculate yet (Start or Finish not picked).
 class CalculatedHoursField extends StatelessWidget {
   /// Creates the read-only Hours display.
@@ -33,7 +39,9 @@ class CalculatedHoursField extends StatelessWidget {
     return InputDecorator(
       decoration: const InputDecoration(labelText: 'Hours'),
       child: Text(
-        hours == null ? '—' : '${WorkTimeCalculator.formatHours(hours!)} h',
+        hours == null
+            ? '—'
+            : WorkTimeCalculator.formatDurationFromHours(hours!),
       ),
     );
   }

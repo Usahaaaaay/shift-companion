@@ -17,6 +17,18 @@
 // decisions/0004-automatic-hours-calculation.md for why the form's
 // previously-free-text Start/Finish fields needed to become structured to
 // make this possible).
+//
+// PHASE 3.6 (bug fix): added [formatDuration]/[formatDurationFromHours].
+// Manual verification of Template Management surfaced a presentation bug:
+// every UI display of worked time went through [formatHours], showing
+// decimal hours ("8.83 h") instead of a human-readable "8h 50m". The
+// calculation itself was never wrong — [calculateWorkedHours] correctly
+// returned 8.8333... hours for a 530-minute shift; only how that value
+// then got displayed was the problem. [formatHours] is left exactly as it
+// was (still correct, still tested, still available for any future caller
+// that genuinely wants decimal hours, e.g. a payroll export) — the two
+// display call sites (CalculatedHoursField, ShiftInfoCard) were switched
+// to the new formatter instead of it.
 
 /// Pure calculations for turning a shift's start/finish/break (all in
 /// minutes since midnight) into worked time. Every method is a pure
@@ -111,4 +123,32 @@ abstract final class WorkTimeCalculator {
     if (text.endsWith('0')) text = text.substring(0, text.length - 1);
     return text;
   }
+
+  /// Formats a worked-time duration, in minutes, as a human-readable
+  /// "Xh Ym" string — e.g. `530` -> `"8h 50m"`, `480` -> `"8h"`, `30` ->
+  /// `"30m"`, `0` -> `"0m"`. This is the display format every UI shows
+  /// worked time in, in place of [formatHours]' decimal form.
+  ///
+  /// A zero hours or zero minutes component is omitted entirely (never
+  /// "0h 50m" or "8h 0m") — except when the whole duration is zero, which
+  /// reads as "0m" rather than an empty string.
+  static String formatDuration(int minutes) {
+    final wholeHours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    if (wholeHours == 0) return '${remainingMinutes}m';
+    if (remainingMinutes == 0) return '${wholeHours}h';
+    return '${wholeHours}h ${remainingMinutes}m';
+  }
+
+  /// [formatDuration], for callers that only have the already-computed
+  /// decimal [hours] value (e.g. [ShiftDetails.hours], read back from
+  /// storage) rather than the original integer minutes.
+  ///
+  /// Rounds `hours * 60` to the nearest minute — safe because every hours
+  /// value this app produces came from [calculateWorkedHours], itself
+  /// exactly `wholeMinutes / 60`, so this recovers that original integer
+  /// exactly (floating-point noise from the division is always well under
+  /// half a minute for any duration within a calendar day).
+  static String formatDurationFromHours(double hours) =>
+      formatDuration((hours * 60).round());
 }

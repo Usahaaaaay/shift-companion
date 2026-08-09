@@ -62,9 +62,23 @@
 // Unlike the Dashboard, this screen uses a real AppBar — per
 // docs/Design_System.md Section 8.8, every screen except the landing tab
 // gets one; Calendar isn't the landing tab, so it follows the default.
+//
+// PHASE 3.6: added an AppBar action pushing routing/app_router.dart's new
+// `AppRoutes.templates` route. Template Management lives here (rather
+// than, say, the Dashboard) because templates are a Calendar-feature
+// concept — Dashboard doesn't even have a real AppBar to put an action on
+// (see its own header note) — and because this is the screen that already
+// holds the `ShiftRepository` templates are read from. No repository or
+// data-flow change: `context.push` just navigates to a screen that's
+// handed the same shared repository instance this screen already has.
+// Imports `routing/app_routes.dart` specifically, not `app_router.dart`
+// itself — see that file's own Phase 3.6 note on why importing it back
+// from here would be a circular dependency.
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_spacing.dart';
+import '../../../../routing/app_routes.dart';
 import '../../domain/entities/shift_details.dart';
 import '../../domain/entities/shift_template.dart';
 import '../../domain/repositories/shift_repository.dart';
@@ -170,7 +184,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final displayedMonth = DateTime(today.year, today.month);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Calendar')),
+      appBar: AppBar(
+        title: const Text('Calendar'),
+        actions: [
+          IconButton(
+            onPressed: () => context.push(AppRoutes.templates),
+            icon: const Icon(Icons.bookmark_border),
+            tooltip: 'Manage Templates',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.lg),

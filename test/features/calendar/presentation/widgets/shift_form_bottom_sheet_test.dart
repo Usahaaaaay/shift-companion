@@ -12,6 +12,11 @@
 // reads "Unpaid break (minutes)" (not plain "Break") — see
 // decisions/0005-unpaid-break-terminology.md — and a real-world worked
 // example (07:00-16:30, 40 min unpaid break) applied via a template.
+//
+// PHASE 3.6 (bug fix): Hours assertions updated from decimal ("8.0 h") to
+// WorkTimeCalculator.formatDuration's "Xh Ym" form ("8h") — the display
+// format changed, not the underlying calculation. See
+// core/utils/work_time_calculator.dart's own Phase 3.6 bug-fix note.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,8 +65,8 @@ void main() {
       // Start/Finish, converted from the template's minutes.
       expect(find.text('7:00 AM'), findsOneWidget);
       expect(find.text('3:30 PM'), findsOneWidget);
-      // 930 - 420 = 510 minutes raw, minus 30 break = 480 minutes = 8.0h.
-      expect(find.text('8.0 h'), findsOneWidget);
+      // 930 - 420 = 510 minutes raw, minus 30 break = 480 minutes = 8h.
+      expect(find.text('8h'), findsOneWidget);
     },
   );
 
@@ -74,9 +79,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Morning').last);
     await tester.pumpAndSettle();
-    expect(find.text('8.0 h'), findsOneWidget);
+    expect(find.text('8h'), findsOneWidget);
 
-    // Changing Break to 60 should immediately drop Hours to 7.5 — 510
+    // Changing Break to 60 should immediately drop Hours to 7h 30m — 510
     // raw minutes minus 60 = 450 minutes. The Break field is the only
     // numeric-keyboard TextField in this form, so it's uniquely findable
     // that way without depending on internal widget structure.
@@ -87,8 +92,8 @@ void main() {
     await tester.enterText(breakField, '60');
     await tester.pump();
 
-    expect(find.text('7.5 h'), findsOneWidget);
-    expect(find.text('8.0 h'), findsNothing);
+    expect(find.text('7h 30m'), findsOneWidget);
+    expect(find.text('8h'), findsNothing);
   });
 
   testWidgets('the break field is labeled "Unpaid break", not "Break"', (
@@ -119,8 +124,9 @@ void main() {
 
     expect(find.text('7:00 AM'), findsOneWidget);
     expect(find.text('4:30 PM'), findsOneWidget);
-    // 990 - 420 = 570 minutes raw, minus 40 break = 530 minutes = 8h 50m
-    // = 8.8333... hours, displayed rounded to 2 decimal places.
-    expect(find.text('8.83 h'), findsOneWidget);
+    // 990 - 420 = 570 minutes raw, minus 40 break = 530 minutes = 8h 50m —
+    // this is the exact bug this fix addresses: it used to display as the
+    // confusing decimal "8.83 h".
+    expect(find.text('8h 50m'), findsOneWidget);
   });
 }

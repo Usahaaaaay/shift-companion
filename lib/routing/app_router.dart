@@ -34,27 +34,34 @@
 // build callback, still no dedicated Riverpod provider, no globals, no
 // service locator. CalendarScreen still only ever sees `ShiftRepository`;
 // this is the only file in the app that knows a database exists at all.
+//
+// PHASE 3.6: added `AppRoutes.templates` and its `GoRoute`, a sibling to
+// the `StatefulShellRoute` rather than a branch inside it — Template
+// Management isn't a top-level tab (there's no third bottom-nav
+// destination for it), it's a detail screen reached by pushing on top of
+// the shell, the same way `quick_actions_section.dart`'s own long-standing
+// "FUTURE NAVIGATION" comment already described as this app's intended
+// pattern for exactly this kind of destination. `TemplateManagementScreen`
+// receives the same shared `shiftRepository` instance every other route
+// here does — no second repository, no new database.
+//
+// `AppRoutes` itself moved out to app_routes.dart in the same phase: once
+// CalendarScreen needed to reference `AppRoutes.templates` to navigate
+// there, keeping the constants defined in *this* file (which imports every
+// screen, including CalendarScreen) would have made CalendarScreen import
+// this file right back — a real circular dependency. app_routes.dart has
+// no feature imports at all, so both this file and any screen can safely
+// depend on it.
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../database/app_database.dart';
 import '../features/calendar/data/repositories/drift_shift_repository.dart';
 import '../features/calendar/presentation/screens/calendar_screen.dart';
+import '../features/calendar/presentation/screens/template_management_screen.dart';
 import '../features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'app_routes.dart';
 import 'app_shell.dart';
-
-/// Centralized route path constants, so a route is always referenced by name
-/// (`AppRoutes.dashboard`) rather than a raw string repeated across the
-/// codebase.
-abstract final class AppRoutes {
-  /// The Dashboard — the app's landing screen (see
-  /// docs/Software_Requirements.md Section 5.1).
-  static const String dashboard = '/';
-
-  /// The Calendar — the app's monthly schedule view (see
-  /// docs/Software_Requirements.md Section 5.2).
-  static const String calendar = '/calendar';
-}
 
 /// Provides the app's [GoRouter] instance.
 ///
@@ -98,6 +105,11 @@ final Provider<GoRouter> goRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: AppRoutes.templates,
+        builder: (context, state) =>
+            TemplateManagementScreen(repository: shiftRepository),
       ),
     ],
   );

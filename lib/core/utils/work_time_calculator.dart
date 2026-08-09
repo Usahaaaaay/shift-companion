@@ -57,17 +57,28 @@ abstract final class WorkTimeCalculator {
     required int breakMinutes,
   }) => breakMinutes > calculateDurationMinutes(startMinutes, endMinutes);
 
+  /// Whether [breakMinutes] is negative — nonsensical on its own terms (a
+  /// break can't last "negative time"), and specifically dangerous here
+  /// because [calculateWorkedMinutes] does `duration - breakMinutes`: an
+  /// unguarded negative value would *inflate* worked time past the raw
+  /// shift span rather than reduce it.
+  static bool isNegativeBreak(int breakMinutes) => breakMinutes < 0;
+
   /// The actual worked time, in minutes: the raw start-to-finish span
-  /// minus [breakMinutes], floored at zero. Never negative, even if
-  /// [breakMinutes] exceeds the raw span — see [isBreakTooLong] for
-  /// surfacing that case as a validation error instead.
+  /// minus [breakMinutes], floored at zero. Never negative — not even if
+  /// [breakMinutes] exceeds the raw span (see [isBreakTooLong] for
+  /// surfacing that as a validation error instead) or is itself negative
+  /// (see [isNegativeBreak]) — a negative [breakMinutes] is treated as no
+  /// break at all here, rather than silently subtracting a negative
+  /// number and inflating the result.
   static int calculateWorkedMinutes({
     required int startMinutes,
     required int endMinutes,
     required int breakMinutes,
   }) {
     final duration = calculateDurationMinutes(startMinutes, endMinutes);
-    final worked = duration - breakMinutes;
+    final safeBreak = breakMinutes < 0 ? 0 : breakMinutes;
+    final worked = duration - safeBreak;
     return worked < 0 ? 0 : worked;
   }
 

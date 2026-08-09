@@ -69,9 +69,12 @@ void main() {
   });
 
   group('overnight handling', () {
-    test('isOvernight is true when finish is earlier in the day than start', () {
-      expect(WorkTimeCalculator.isOvernight(22 * 60, 6 * 60), isTrue);
-    });
+    test(
+      'isOvernight is true when finish is earlier in the day than start',
+      () {
+        expect(WorkTimeCalculator.isOvernight(22 * 60, 6 * 60), isTrue);
+      },
+    );
 
     test('isOvernight is false for a same-day shift', () {
       expect(WorkTimeCalculator.isOvernight(7 * 60, 15 * 60), isFalse);
@@ -83,23 +86,29 @@ void main() {
   });
 
   group('edge cases', () {
-    test('zero-length shift (same start and finish) yields zero hours, not a crash', () {
-      final hours = WorkTimeCalculator.calculateWorkedHours(
-        startMinutes: 600,
-        endMinutes: 600,
-        breakMinutes: 0,
-      );
-      expect(hours, 0.0);
-    });
+    test(
+      'zero-length shift (same start and finish) yields zero hours, not a crash',
+      () {
+        final hours = WorkTimeCalculator.calculateWorkedHours(
+          startMinutes: 600,
+          endMinutes: 600,
+          breakMinutes: 0,
+        );
+        expect(hours, 0.0);
+      },
+    );
 
-    test('a break longer than the shift clamps worked hours to zero, never negative', () {
-      final hours = WorkTimeCalculator.calculateWorkedHours(
-        startMinutes: 7 * 60,
-        endMinutes: 8 * 60, // 60 minutes raw duration
-        breakMinutes: 90, // longer than the shift itself
-      );
-      expect(hours, 0.0);
-    });
+    test(
+      'a break longer than the shift clamps worked hours to zero, never negative',
+      () {
+        final hours = WorkTimeCalculator.calculateWorkedHours(
+          startMinutes: 7 * 60,
+          endMinutes: 8 * 60, // 60 minutes raw duration
+          breakMinutes: 90, // longer than the shift itself
+        );
+        expect(hours, 0.0);
+      },
+    );
 
     test('isBreakTooLong flags a break exceeding the raw duration', () {
       final tooLong = WorkTimeCalculator.isBreakTooLong(
@@ -117,6 +126,109 @@ void main() {
         breakMinutes: 30,
       );
       expect(tooLong, isFalse);
+    });
+
+    test(
+      'a negative break is treated as no break, never inflating worked time',
+      () {
+        // Without the guard, duration(480) - (-30) would wrongly yield 510
+        // minutes (8.5h) — more than the shift's own raw span.
+        final hours = WorkTimeCalculator.calculateWorkedHours(
+          startMinutes: 9 * 60,
+          endMinutes: 17 * 60,
+          breakMinutes: -30,
+        );
+        expect(hours, 8.0);
+      },
+    );
+
+    test('isNegativeBreak flags a negative break value', () {
+      expect(WorkTimeCalculator.isNegativeBreak(-1), isTrue);
+      expect(WorkTimeCalculator.isNegativeBreak(0), isFalse);
+      expect(WorkTimeCalculator.isNegativeBreak(30), isFalse);
+    });
+  });
+
+  group('spec examples (09:00-17:00 family)', () {
+    test('09:00-17:00, no break -> 8 hours', () {
+      final hours = WorkTimeCalculator.calculateWorkedHours(
+        startMinutes: 9 * 60,
+        endMinutes: 17 * 60,
+        breakMinutes: 0,
+      );
+      expect(hours, 8.0);
+    });
+
+    test('09:00-17:00, 30 min break -> 7.5 hours', () {
+      final hours = WorkTimeCalculator.calculateWorkedHours(
+        startMinutes: 9 * 60,
+        endMinutes: 17 * 60,
+        breakMinutes: 30,
+      );
+      expect(hours, 7.5);
+    });
+
+    test('09:00-17:00, 60 min break -> 7 hours', () {
+      final hours = WorkTimeCalculator.calculateWorkedHours(
+        startMinutes: 9 * 60,
+        endMinutes: 17 * 60,
+        breakMinutes: 60,
+      );
+      expect(hours, 7.0);
+    });
+
+    test('11:00-20:30, no break -> 9.5 hours', () {
+      final hours = WorkTimeCalculator.calculateWorkedHours(
+        startMinutes: 11 * 60,
+        endMinutes: 20 * 60 + 30,
+        breakMinutes: 0,
+      );
+      expect(hours, 9.5);
+    });
+
+    test(
+      'break exactly equal to the shift duration -> zero hours, not negative',
+      () {
+        final hours = WorkTimeCalculator.calculateWorkedHours(
+          startMinutes: 9 * 60,
+          endMinutes: 17 * 60, // 480 minutes raw
+          breakMinutes: 480,
+        );
+        expect(hours, 0.0);
+      },
+    );
+
+    test(
+      'break far exceeding the shift duration -> zero hours, not negative',
+      () {
+        final hours = WorkTimeCalculator.calculateWorkedHours(
+          startMinutes: 9 * 60,
+          endMinutes: 17 * 60,
+          breakMinutes: 600,
+        );
+        expect(hours, 0.0);
+      },
+    );
+  });
+
+  group('minute-level boundaries', () {
+    test('a one-minute shift (09:00-09:01) calculates correctly', () {
+      final minutes = WorkTimeCalculator.calculateWorkedMinutes(
+        startMinutes: 9 * 60,
+        endMinutes: 9 * 60 + 1,
+        breakMinutes: 0,
+      );
+      expect(minutes, 1);
+    });
+
+    test('a two-minute overnight shift (23:59-00:01) calculates correctly', () {
+      final minutes = WorkTimeCalculator.calculateWorkedMinutes(
+        startMinutes: 23 * 60 + 59,
+        endMinutes: 1,
+        breakMinutes: 0,
+      );
+      expect(minutes, 2);
+      expect(WorkTimeCalculator.isOvernight(23 * 60 + 59, 1), isTrue);
     });
   });
 }

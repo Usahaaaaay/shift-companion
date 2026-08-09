@@ -13,16 +13,19 @@ import 'package:shift_companion/core/utils/app_date_format.dart';
 
 void main() {
   group('minutesFromTimeOfDay', () {
-    test('round-trips every minute of the day through timeOfDayFromMinutes', () {
-      for (var minutes = 0; minutes < 24 * 60; minutes += 5) {
-        final formatted = AppDateFormat.timeOfDayFromMinutes(minutes);
-        expect(
-          AppDateFormat.minutesFromTimeOfDay(formatted),
-          minutes,
-          reason: 'Failed to round-trip $formatted (expected $minutes)',
-        );
-      }
-    });
+    test(
+      'round-trips every minute of the day through timeOfDayFromMinutes',
+      () {
+        for (var minutes = 0; minutes < 24 * 60; minutes += 5) {
+          final formatted = AppDateFormat.timeOfDayFromMinutes(minutes);
+          expect(
+            AppDateFormat.minutesFromTimeOfDay(formatted),
+            minutes,
+            reason: 'Failed to round-trip $formatted (expected $minutes)',
+          );
+        }
+      },
+    );
 
     test('parses midnight and noon correctly', () {
       expect(AppDateFormat.minutesFromTimeOfDay('12:00 AM'), 0);

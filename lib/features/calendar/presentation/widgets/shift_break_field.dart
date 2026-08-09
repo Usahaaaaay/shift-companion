@@ -10,8 +10,15 @@
 // break — [errorText] is computed by the caller (via
 // WorkTimeCalculator.isBreakTooLong) and just displayed here, same
 // separation of concerns as every other extracted field in this form.
+//
+// digitsOnly input formatter added alongside this phase's negative-break
+// guard in WorkTimeCalculator: this makes a negative value structurally
+// impossible to type via this field in the first place (defense in depth),
+// while the calculator's own clamp is what actually keeps the calculation
+// safe regardless of how a value reaches it.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// The shift form's Break field — a plain minutes entry, with an optional
 /// caller-supplied validation message (e.g. "break exceeds shift
@@ -41,6 +48,7 @@ class ShiftBreakField extends StatelessWidget {
     return TextField(
       controller: controller,
       keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       onChanged: onChanged,
       decoration: InputDecoration(
         labelText: 'Break (minutes)',

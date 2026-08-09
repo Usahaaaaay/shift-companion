@@ -38,7 +38,10 @@ void main() {
       final templates = await repository.getTemplates();
 
       expect(templates, hasLength(3));
-      expect(templates.map((t) => t.name), containsAll(['Morning', 'Afternoon', 'Night']));
+      expect(
+        templates.map((t) => t.name),
+        containsAll(['Morning', 'Afternoon', 'Night']),
+      );
 
       final morning = templates.firstWhere((t) => t.name == 'Morning');
       expect(morning.startMinutes, 420);
@@ -102,24 +105,30 @@ void main() {
       expect(updated.any((t) => t.name == 'Morning'), isFalse);
     });
 
-    test('deleteTemplate removes only that template, never any shift', () async {
-      final date = DateTime(2026, 8, 10);
-      await repository.saveShift(date, ShiftDetails.placeholderFor(ShiftType.morning));
+    test(
+      'deleteTemplate removes only that template, never any shift',
+      () async {
+        final date = DateTime(2026, 8, 10);
+        await repository.saveShift(
+          date,
+          ShiftDetails.placeholderFor(ShiftType.morning),
+        );
 
-      final templates = await repository.getTemplates();
-      final morning = templates.firstWhere((t) => t.name == 'Morning');
-      await repository.deleteTemplate(morning.id!);
+        final templates = await repository.getTemplates();
+        final morning = templates.firstWhere((t) => t.name == 'Morning');
+        await repository.deleteTemplate(morning.id!);
 
-      final remaining = await repository.getTemplates();
-      expect(remaining, hasLength(2));
-      expect(remaining.any((t) => t.name == 'Morning'), isFalse);
+        final remaining = await repository.getTemplates();
+        expect(remaining, hasLength(2));
+        expect(remaining.any((t) => t.name == 'Morning'), isFalse);
 
-      // The shift that happened to be filled in from the "Morning"
-      // template is untouched — templates are presets only.
-      final shift = await repository.getShift(date);
-      expect(shift, isNotNull);
-      expect(shift!.type, ShiftType.morning);
-    });
+        // The shift that happened to be filled in from the "Morning"
+        // template is untouched — templates are presets only.
+        final shift = await repository.getShift(date);
+        expect(shift, isNotNull);
+        expect(shift!.type, ShiftType.morning);
+      },
+    );
   });
 
   group('breakMinutes on Shift', () {
@@ -136,7 +145,10 @@ void main() {
 
     test('stays null when not set, matching existing shift behavior', () async {
       final date = DateTime(2026, 8, 12);
-      await repository.saveShift(date, ShiftDetails.placeholderFor(ShiftType.off));
+      await repository.saveShift(
+        date,
+        ShiftDetails.placeholderFor(ShiftType.off),
+      );
 
       final shift = await repository.getShift(date);
       expect(shift?.breakMinutes, isNull);
@@ -148,7 +160,10 @@ void main() {
       final date = DateTime(2026, 8, 13);
       expect(await repository.getShift(date), isNull);
 
-      await repository.saveShift(date, ShiftDetails.placeholderFor(ShiftType.night));
+      await repository.saveShift(
+        date,
+        ShiftDetails.placeholderFor(ShiftType.night),
+      );
       final saved = await repository.getShift(date);
       expect(saved?.type, ShiftType.night);
 

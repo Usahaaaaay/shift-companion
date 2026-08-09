@@ -31,3 +31,4 @@ One file per decision, numbered sequentially: `NNNN-short-title.md`. Each file c
 | [0002](0002-persistence-drift-sqlite.md) | Local persistence: Drift (SQLite) | Accepted |
 | [0003](0003-shift-templates-minutes-storage.md) | Shift Templates: minutes-since-midnight storage, and where break lives | Accepted |
 | [0004](0004-automatic-hours-calculation.md) | Automatic hours calculation: structured time fields, no schema change | Accepted |
+| [0005](0005-unpaid-break-terminology.md) | "Unpaid break" terminology — clarifying what `breakMinutes` deducts | Accepted |

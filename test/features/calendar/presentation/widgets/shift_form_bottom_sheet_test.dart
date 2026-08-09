@@ -7,6 +7,11 @@
 // explicitly (sections 8 and 9/16 of the brief). WorkTimeCalculator's own
 // arithmetic is covered exhaustively in work_time_calculator_test.dart;
 // this file verifies the widget actually wires it up correctly.
+//
+// PHASE 3.6: added coverage confirming the break field's visible label
+// reads "Unpaid break (minutes)" (not plain "Break") — see
+// decisions/0005-unpaid-break-terminology.md — and a real-world worked
+// example (07:00-16:30, 40 min unpaid break) applied via a template.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,5 +89,38 @@ void main() {
 
     expect(find.text('7.5 h'), findsOneWidget);
     expect(find.text('8.0 h'), findsNothing);
+  });
+
+  testWidgets('the break field is labeled "Unpaid break", not "Break"', (
+    tester,
+  ) async {
+    await pumpForm(tester, templates: const []);
+
+    expect(find.text('Unpaid break (minutes)'), findsOneWidget);
+    expect(find.text('Break (minutes)'), findsNothing);
+    expect(find.text('Break'), findsNothing);
+  });
+
+  testWidgets('a real-world opening shift (07:00-16:30, 40 min unpaid break) '
+      'calculates correctly via a template', (tester) async {
+    const openingTemplate = ShiftTemplate(
+      id: 2,
+      name: 'Morning Opening',
+      startMinutes: 420, // 7:00 AM
+      endMinutes: 990, // 4:30 PM
+      breakMinutes: 40,
+    );
+    await pumpForm(tester, templates: [openingTemplate]);
+
+    await tester.tap(find.byType(DropdownButtonFormField<ShiftTemplate>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Morning Opening').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('7:00 AM'), findsOneWidget);
+    expect(find.text('4:30 PM'), findsOneWidget);
+    // 990 - 420 = 570 minutes raw, minus 40 break = 530 minutes = 8h 50m
+    // = 8.8333... hours, displayed rounded to 2 decimal places.
+    expect(find.text('8.83 h'), findsOneWidget);
   });
 }

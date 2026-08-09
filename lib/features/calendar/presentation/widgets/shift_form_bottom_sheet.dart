@@ -355,7 +355,7 @@ class _ShiftFormBottomSheetState extends State<ShiftFormBottomSheet> {
               // its own the way a value passed into `setState` would.
               onChanged: (_) => setState(() {}),
               errorText: _breakTooLong
-                  ? 'Break cannot exceed shift duration'
+                  ? 'Unpaid break cannot exceed shift duration'
                   : null,
             ),
             const SizedBox(height: AppSpacing.md),

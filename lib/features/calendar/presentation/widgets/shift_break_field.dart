@@ -16,15 +16,26 @@
 // impossible to type via this field in the first place (defense in depth),
 // while the calculator's own clamp is what actually keeps the calculation
 // safe regardless of how a value reaches it.
+//
+// PHASE 3.6: the visible label changed from "Break" to "Unpaid break" —
+// `breakMinutes` has always meant unpaid time only (see
+// ShiftDetails.breakMinutes' own doc comment), but the old plain "Break"
+// label didn't say so, risking a user entering a *paid* rest break here by
+// mistake and having it wrongly deducted from worked hours. This widget's
+// name, its `controller`/`errorText` API, and the underlying `breakMinutes`
+// field/column are all unchanged — only the displayed text changed. See
+// decisions/0005-unpaid-break-terminology.md.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// The shift form's Break field — a plain minutes entry, with an optional
-/// caller-supplied validation message (e.g. "break exceeds shift
-/// duration").
+/// The shift form's Unpaid break field — a plain minutes entry, with an
+/// optional caller-supplied validation message (e.g. "break exceeds shift
+/// duration"). Kept named `ShiftBreakField` (matching the underlying
+/// `breakMinutes` it edits) even though its visible label reads "Unpaid
+/// break" — see this file's own Phase 3.6 header note.
 class ShiftBreakField extends StatelessWidget {
-  /// Creates the Break field.
+  /// Creates the Unpaid break field.
   const ShiftBreakField({
     super.key,
     required this.controller,
@@ -51,7 +62,7 @@ class ShiftBreakField extends StatelessWidget {
       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
       onChanged: onChanged,
       decoration: InputDecoration(
-        labelText: 'Break (minutes)',
+        labelText: 'Unpaid break (minutes)',
         hintText: 'e.g. 30',
         errorText: errorText,
       ),

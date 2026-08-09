@@ -25,6 +25,10 @@
 // instead of raw string interpolation, so a shift with a duration that
 // isn't a clean multiple of an hour (e.g. 100 minutes) can't render as
 // "1.6666666666666667 hrs" here the way plain `'${details.hours}'` would.
+//
+// PHASE 3.6: the break row's label reads "Unpaid break", not "Break" —
+// see decisions/0005-unpaid-break-terminology.md. `breakMinutes` itself is
+// unchanged.
 
 import 'package:flutter/material.dart';
 import '../../../../core/constants/app_spacing.dart';
@@ -107,7 +111,7 @@ class ShiftInfoCard extends StatelessWidget {
             if (details.breakMinutes != null) ...[
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Break',
+                'Unpaid break',
                 style: textTheme.labelMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),

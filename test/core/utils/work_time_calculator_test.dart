@@ -149,6 +149,47 @@ void main() {
     });
   });
 
+  group('Phase 3.6 — unpaid break clarification', () {
+    test(
+      '07:00-16:30, 40 min unpaid break -> 8h 50m (real-world opening shift)',
+      () {
+        final minutes = WorkTimeCalculator.calculateWorkedMinutes(
+          startMinutes: 7 * 60,
+          endMinutes: 16 * 60 + 30,
+          breakMinutes: 40,
+        );
+        // 8h 50m = 530 minutes. Asserted in minutes (not hours) so this
+        // test can't be fooled by a formatting bug — 530 minutes is
+        // unambiguously "8h 50m", independent of how it's later displayed.
+        expect(minutes, 530);
+      },
+    );
+
+    test('a paid rest break must never be folded into breakMinutes — only the '
+        'unpaid amount is deducted', () {
+      // A worker with a paid 10-minute rest break *and* a 40-minute
+      // unpaid break must still pass breakMinutes: 40, not 50 — this
+      // test locks in that WorkTimeCalculator's input is the unpaid
+      // amount alone, matching decisions/0005.
+      final withUnpaidOnly = WorkTimeCalculator.calculateWorkedMinutes(
+        startMinutes: 7 * 60,
+        endMinutes: 16 * 60 + 30,
+        breakMinutes: 40,
+      );
+      // Raw duration is 570 minutes (07:00-16:30); wrongly including the
+      // paid 10-minute rest break would deduct 50 instead of 40.
+      final ifPaidBreakWereWronglyIncluded =
+          WorkTimeCalculator.calculateWorkedMinutes(
+            startMinutes: 7 * 60,
+            endMinutes: 16 * 60 + 30,
+            breakMinutes: 50,
+          );
+      expect(withUnpaidOnly, 530);
+      expect(ifPaidBreakWereWronglyIncluded, 520);
+      expect(withUnpaidOnly, isNot(ifPaidBreakWereWronglyIncluded));
+    });
+  });
+
   group('spec examples (09:00-17:00 family)', () {
     test('09:00-17:00, no break -> 8 hours', () {
       final hours = WorkTimeCalculator.calculateWorkedHours(
